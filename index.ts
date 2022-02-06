@@ -21,12 +21,27 @@ client.on("messageCreate", function (message) {
   const command: string = args.shift()?.toLowerCase() ?? "";
 
   if (command === "whitelist") {
-    whitelistadd(message, args);
+    whiteListAdd(message, args);
+  } else if (command === "checkwhitelist") {
+    checkWhiteList(message);
   }
 
 });
 
-async function whitelistadd(message: Discord.Message<boolean>, args: string[]) {
+async function checkWhiteList(message: Discord.Message<boolean>) {
+  const username = message.author.username + "#" + message.author.discriminator;
+  const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base('appRYgta1UWz57KXP');
+  const result = await airtable_fetch(base, username);
+
+  if (result === undefined || result[0] === undefined) {
+    message.reply("You don't regist WhiteList Address yet.");
+    return;
+  }
+  const wallet_address = result[0].fields["Wallet Address"] as string;
+  message.reply("Your Wallet Address = " + wallet_address);
+}
+
+async function whiteListAdd(message: Discord.Message<boolean>, args: string[]) {
   const args1 = args.shift();
   if (!args1) {
     message.reply(`Failed. You need to add whitelist address.`);
@@ -45,9 +60,8 @@ async function whitelistadd(message: Discord.Message<boolean>, args: string[]) {
   }
 
   const username = message.author.username + "#" + message.author.discriminator;
-  await create_or_update_airtable(username, args1);
+  await create_or_update_airtable(username, args1, message);
 
-  message.reply(`SUCCESS.Your name is ${username}. Your WhiteList address is ${args1}`);
 }
 
 
@@ -55,12 +69,12 @@ async function airtable_fetch(base: AirtableBase, username: string): Promise<Rec
   return new Promise((resolve, reject) => {
     base('WhiteList').select({
       filterByFormula: "{Discord Name} = '" + username + "'"
-    }).firstPage((err, record: Records<FieldSet> | undefined): void => {
+    }).firstPage((err, records: Records<FieldSet> | undefined): void => {
       if (err) {
         console.error(err);
         reject(err);
       }
-      resolve(record);
+      resolve(records);
     });
   });
 }
@@ -90,11 +104,40 @@ async function update(base: AirtableBase, record_id: string, wallet_address: str
 
 }
 
-async function create_or_update_airtable(username: string, wallet_address: string) {
+async function create(base: AirtableBase, username: string, wallet_address: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    base('WhiteList').create([
+      {
+        "fields": {
+          "Discord Name": username,
+          "Wallet Address": wallet_address,
+        }
+      }
+    ], (err, records): void => {
+      if (err) {
+        console.error(err);
+        reject(err);
+        return;
+      }
+      if (records === undefined) {
+        reject("no records");
+        return;
+      }
+      resolve(records[0].id);
+    });
+  });
+
+}
+
+async function create_or_update_airtable(username: string, wallet_address: string, message: Discord.Message<boolean>) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base('appRYgta1UWz57KXP');
   const result = await airtable_fetch(base, username);
-  if (result) {
+  if (result && result[0]) {
     await update(base, result[0].id, wallet_address);
+    message.reply(`UPDATE SUCCESS.Your name is ${username}. Your WhiteList address is ${wallet_address}`);
+  } else {
+    await create(base, username, wallet_address);
+    message.reply(`CREATE SUCCESS.Your name is ${username}. Your WhiteList address is ${wallet_address}`);
   }
 
 }
