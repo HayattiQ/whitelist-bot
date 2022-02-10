@@ -8,6 +8,10 @@ require('dotenv').config()
 client.login(process.env.BOT_TOKEN);
 const prefix = "!";
 
+enum LIST_TYPE {
+  WHIETLIST, // 0
+  KGF // 1
+}
 
 
 client.on("messageCreate", function (message) {
@@ -19,21 +23,38 @@ client.on("messageCreate", function (message) {
   const command: string = args.shift()?.toLowerCase() ?? "";
 
   if (command === "whitelist") {
-    whiteListAdd(message, args);
+    whiteListAdd(message, args, LIST_TYPE.WHIETLIST);
   } else if (command === "checkwhitelist") {
-    checkWhiteList(message);
+    checkWhiteList(message, LIST_TYPE.WHIETLIST);
+  } else if (command === "checkkgf") {
+    checkWhiteList(message, LIST_TYPE.KGF);
+  } else if (command === "kgf") {
+    whiteListAdd(message, args, LIST_TYPE.KGF);
   }
 
 });
 
-async function checkWhiteList(message: Discord.Message<boolean>) {
+async function checkWhiteList(message: Discord.Message<boolean>, type: LIST_TYPE) {
   const username = message.author.username + "#" + message.author.discriminator;
   const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base('appRYgta1UWz57KXP');
-  const result = await airtable_fetch(base, username, process.env.WHITELIST_AIRTABLE_TABLE!);
+  let airtable_tablename, channel;
 
-  if (message.channel.id != process.env.HOW_TO_CHANNEL) {
+  if (type == LIST_TYPE.WHIETLIST) {
+    airtable_tablename = process.env.WHITELIST_AIRTABLE_TABLE!;
+    channel = process.env.WHITELIST_CHANNEL;
+  } else if (type == LIST_TYPE.KGF) {
+    airtable_tablename = process.env.KGF_AIRTABLE_TABLE!;
+    channel = process.env.KGF_CHANNEL;
+  } else {
+    throw new Error();
+  }
+
+  if (message.channel.id != channel) {
     return;
   }
+
+  const result = await airtable_fetch(base, username, airtable_tablename);
+
 
   if (result === undefined || result[0] === undefined) {
     message.reply("You don't regist WhiteList Address yet.");
@@ -43,13 +64,24 @@ async function checkWhiteList(message: Discord.Message<boolean>) {
   message.reply("Your Wallet Address = " + wallet_address);
 }
 
-async function whiteListAdd(message: Discord.Message<boolean>, args: string[]) {
+async function whiteListAdd(message: Discord.Message<boolean>, args: string[], type: LIST_TYPE) {
   const args1 = args.shift();
 
-  if (message.channel.id != process.env.HOW_TO_CHANNEL) {
-    return;
+  let channel, role;
+
+  if (type == LIST_TYPE.WHIETLIST) {
+    channel = process.env.WHITELIST_CHANNEL;
+    role = process.env.WHITELIST_ROLE!;
+  } else if (type == LIST_TYPE.KGF) {
+    channel = process.env.KGF_CHANNEL;
+    role = process.env.KGF_ROLE!;
+  } else {
+    throw new Error();
   }
 
+  if (message.channel.id != channel) {
+    return;
+  }
 
   if (!args1) {
     message.reply(`Failed. You need to add whitelist address.`);
@@ -57,14 +89,20 @@ async function whiteListAdd(message: Discord.Message<boolean>, args: string[]) {
   }
 
 
-  if (!message.member?.roles.cache.has(process.env.WHITELIST_ROLE!)) {
+  if (!message.member?.roles.cache.has(role)) {
     message.reply("Failed. you don't have whitelisted roles");
     return;
   }
 
 
   const username = message.author.username + "#" + message.author.discriminator;
-  await create_or_update_whitelist(username, args1, message);
+  if (type == LIST_TYPE.WHIETLIST) {
+    await create_or_update_whitelist(username, args1, message);
+  } else if (type === LIST_TYPE.KGF) {
+    await create_or_update_kgf(username, args1, message);
+  } else {
+    throw new Error();
+  }
 
 }
 
@@ -142,6 +180,19 @@ async function create_or_update_whitelist(username: string, wallet_address: stri
   } else {
     await create(base, username, wallet_address, process.env.WHITELIST_AIRTABLE_TABLE!);
     message.reply(`CREATE SUCCESS.Your name is ${username}. Your WhiteList address is ${wallet_address}`);
+  }
+
+}
+
+async function create_or_update_kgf(username: string, wallet_address: string, message: Discord.Message<boolean>) {
+  const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base('appRYgta1UWz57KXP');
+  const result = await airtable_fetch(base, username, process.env.KGF_AIRTABLE_TABLE!);
+  if (result && result[0]) {
+    await update(base, result[0].id, wallet_address, process.env.KGF_AIRTABLE_TABLE!);
+    message.reply(`UPDATE SUCCESS(KGF).Your name is ${username}. Your WhiteList address is ${wallet_address}`);
+  } else {
+    await create(base, username, wallet_address, process.env.KGF_AIRTABLE_TABLE!);
+    message.reply(`CREATE SUCCESS(KGF).Your name is ${username}. Your WhiteList address is ${wallet_address}`);
   }
 
 }
