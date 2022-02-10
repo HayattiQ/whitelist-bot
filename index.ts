@@ -7,8 +7,6 @@ require('dotenv').config()
 
 client.login(process.env.BOT_TOKEN);
 const prefix = "!";
-const whitelist_role = "939740474669928458";
-const howtochannel = "913360918279229441";
 
 
 
@@ -31,7 +29,11 @@ client.on("messageCreate", function (message) {
 async function checkWhiteList(message: Discord.Message<boolean>) {
   const username = message.author.username + "#" + message.author.discriminator;
   const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base('appRYgta1UWz57KXP');
-  const result = await airtable_fetch(base, username);
+  const result = await airtable_fetch(base, username, process.env.WHITELIST_AIRTABLE_TABLE!);
+
+  if (message.channel.id != process.env.HOW_TO_CHANNEL) {
+    return;
+  }
 
   if (result === undefined || result[0] === undefined) {
     message.reply("You don't regist WhiteList Address yet.");
@@ -43,31 +45,33 @@ async function checkWhiteList(message: Discord.Message<boolean>) {
 
 async function whiteListAdd(message: Discord.Message<boolean>, args: string[]) {
   const args1 = args.shift();
+
+  if (message.channel.id != process.env.HOW_TO_CHANNEL) {
+    return;
+  }
+
+
   if (!args1) {
     message.reply(`Failed. You need to add whitelist address.`);
     return;
   }
 
 
-  if (!message.member?.roles.cache.has(whitelist_role)) {
+  if (!message.member?.roles.cache.has(process.env.WHITELIST_ROLE!)) {
     message.reply("Failed. you don't have whitelisted roles");
     return;
   }
 
-  if (message.channel.id != howtochannel) {
-    message.reply("Failed. you need to execute command in certain channel");
-    return;
-  }
 
   const username = message.author.username + "#" + message.author.discriminator;
-  await create_or_update_airtable(username, args1, message);
+  await create_or_update_whitelist(username, args1, message);
 
 }
 
 
-async function airtable_fetch(base: AirtableBase, username: string): Promise<Records<FieldSet> | undefined> {
+async function airtable_fetch(base: AirtableBase, username: string, airtable_table_name: string): Promise<Records<FieldSet> | undefined> {
   return new Promise((resolve, reject) => {
-    base('WhiteList').select({
+    base(airtable_table_name).select({
       filterByFormula: "{Discord Name} = '" + username + "'"
     }).firstPage((err, records: Records<FieldSet> | undefined): void => {
       if (err) {
@@ -79,9 +83,9 @@ async function airtable_fetch(base: AirtableBase, username: string): Promise<Rec
   });
 }
 
-async function update(base: AirtableBase, record_id: string, wallet_address: string): Promise<string> {
+async function update(base: AirtableBase, record_id: string, wallet_address: string, airtable_table_name: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    base('WhiteList').update([
+    base(airtable_table_name).update([
       {
         "id": record_id,
         "fields": {
@@ -104,9 +108,9 @@ async function update(base: AirtableBase, record_id: string, wallet_address: str
 
 }
 
-async function create(base: AirtableBase, username: string, wallet_address: string): Promise<string> {
+async function create(base: AirtableBase, username: string, wallet_address: string, airtable_table_name: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    base('WhiteList').create([
+    base(airtable_table_name).create([
       {
         "fields": {
           "Discord Name": username,
@@ -129,14 +133,14 @@ async function create(base: AirtableBase, username: string, wallet_address: stri
 
 }
 
-async function create_or_update_airtable(username: string, wallet_address: string, message: Discord.Message<boolean>) {
+async function create_or_update_whitelist(username: string, wallet_address: string, message: Discord.Message<boolean>) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base('appRYgta1UWz57KXP');
-  const result = await airtable_fetch(base, username);
+  const result = await airtable_fetch(base, username, process.env.WHITELIST_AIRTABLE_TABLE!);
   if (result && result[0]) {
-    await update(base, result[0].id, wallet_address);
+    await update(base, result[0].id, wallet_address, process.env.WHITELIST_AIRTABLE_TABLE!);
     message.reply(`UPDATE SUCCESS.Your name is ${username}. Your WhiteList address is ${wallet_address}`);
   } else {
-    await create(base, username, wallet_address);
+    await create(base, username, wallet_address, process.env.WHITELIST_AIRTABLE_TABLE!);
     message.reply(`CREATE SUCCESS.Your name is ${username}. Your WhiteList address is ${wallet_address}`);
   }
 
